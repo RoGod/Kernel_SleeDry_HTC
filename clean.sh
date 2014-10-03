@@ -1,7 +1,7 @@
 #!/bin/bash
 
-TOOLCHAIN="/home/rogod/android-ndk-r8e/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86/bin/arm-linux-androideabi-"
-DIR="/home/rogod/android/Kernel"
+TOOLCHAIN="/home/rogod/android-ndk-r10b/toolchains/arm-linux-androideabi-4.6/prebuilt/linux-x86_64/bin/arm-linux-androideabi-"
+DIR="/home/rogod/android/kernel"
 NR_CPUS=$(expr `grep processor /proc/cpuinfo | wc -l` + 1);
 
 echo "#################### Eliminando Restos ####################"

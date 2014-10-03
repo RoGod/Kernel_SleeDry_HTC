@@ -1,7 +1,13 @@
 #!/bin/bash
 #
 clear
-echo "#################### Eliminando Restos ####################"
+
+start_time=`date +'%d/%m/%y %H:%M:%S'`
+
+echo "#################### ELIMINANDO COMPILACIONES ANTERIORES ####################"
+
+./clean.sh > /dev/null 2>&1
+./clean-junk.sh > /dev/null 2>&1
 
 if [ -e boot.img ]; then
         rm boot.img
@@ -21,9 +27,9 @@ fi;
 
 make distclean
 make clean && make mrproper
-rm Module.symvers
+rm Module.symvers > /dev/null 2>&1
 
-echo "#################### Preparando Entorno ####################"
+echo "#################### PREPARANDO NUEVO ENTORNO ####################"
 
 if [ "${1}" != "" ]; then
 	export KERNELDIR=`readlink -f ${1}`
@@ -32,20 +38,16 @@ else
 fi;
 
 export RAMFS_SOURCE=`readlink -f $KERNELDIR/initrd`
-export XTREME=`readlink -f $KERNELDIR/Xtreme-Mega`
-export USE_SEC_FIPS_MODE=true
-export ARCH=arm
+export BOOT=`readlink -f $KERNELDIR/SleeDry`
 NR_CPUS=$(expr `grep processor /proc/cpuinfo | wc -l` + 1)
 
-BUSYBOX="/home/rogod/Kernel/busybox"
-MODULES="/home/rogod/Kernel/modules"
-INITRAMFS_TMP="/home/rogod/Kernel/tmp/ramfs-source-sgs3"
-TOOLCHAIN="/home/rogod/android-ndk-r8e/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86/bin/arm-linux-androideabi-"
-export KERNEL_VERSION="Xtreme-Mega"
+RAMFS_TMP="/home/rogod/Kernel/tmp/ramfs-source-htc"
+TOOLCHAIN="/home/rogod/android-ndk-r10b/toolchains/arm-linux-androideabi-4.6/prebuilt/linux-x86_64/bin/arm-linux-androideabi-"
+export KERNEL_VERSION="Mega"
 export REVISION="V"
 export KBUILD_BUILD_VERSION="1"
 
-echo "#################### Verificando rutas ####################"
+echo "#################### VERIFICANDO RUTAS DEL COMPILADOR ####################"
 
 echo "toolchain = ${TOOLCHAIN}"
 echo "kerneldir = ${KERNELDIR}"
@@ -53,7 +55,7 @@ echo "ramfs_source = ${RAMFS_SOURCE}"
 echo "ramfs_tmp = ${RAMFS_TMP}"
 echo "nr_cpus = ${NR_CPUS}"
 
-echo "#################### Aplicando Permisos correctos ####################"
+echo "#################### APLICANDO PERMISOS AL INITRD ####################"
 
 chmod 644 $RAMFS_SOURCE/*.rc
 chmod 750 $RAMFS_SOURCE/init*
@@ -61,16 +63,11 @@ chmod 640 $RAMFS_SOURCE/fstab*
 chmod 644 $RAMFS_SOURCE/default.prop
 chmod 771 $RAMFS_SOURCE/data
 chmod 755 $RAMFS_SOURCE/dev
-chmod 755 $RAMFS_SOURCE/lib
-chmod 755 $RAMFS_SOURCE/lib/modules
 chmod 755 $RAMFS_SOURCE/proc
 chmod 750 $RAMFS_SOURCE/sbin
 chmod 750 $RAMFS_SOURCE/sbin/*
 chmod 755 $RAMFS_SOURCE/sys
 chmod 755 $RAMFS_SOURCE/system
-chmod 775 $RAMFS_SOURCE/res
-chmod 755 $RAMFS_SOURCE/res/ext
-chmod 644 $RAMFS_SOURCE/res/ext/*
 
 find . -type f -name '*.h' -exec chmod 644 {} \;
 find . -type f -name '*.c' -exec chmod 644 {} \;
@@ -78,120 +75,124 @@ find . -type f -name '*.py' -exec chmod 755 {} \;
 find . -type f -name '*.sh' -exec chmod 755 {} \;
 find . -type f -name '*.pl' -exec chmod 755 {} \;
 
-echo "#################### Eliminando build anterior ####################"
+echo "#################### ELIMINANDO BUILD ANTERIOR ####################"
 
 make ARCH=arm CROSS_COMPILE=$TOOLCHAIN -j${NR_CPUS} mrproper
 make ARCH=arm CROSS_COMPILE=$TOOLCHAIN -j${NR_CPUS} clean
 
-echo "#################### compilar kernel ####################"
+echo "#################### COMPILAR KERNEL ####################"
 
 make ARCH=arm CROSS_COMPILE=$TOOLCHAIN rogod_defconfig
 
-nice -n 10 make -j${NR_CPUS} ARCH=arm CROSS_COMPILE=$TOOLCHAIN || exit 1
+make -j${NR_CPUS} ARCH=arm CROSS_COMPILE=$TOOLCHAIN || exit 1
 
-nice -n 10 make -j${NR_CPUS} ARCH=arm CROSS_COMPILE=$TOOLCHAIN zImage || exit 1
+make -j${NR_CPUS} ARCH=arm CROSS_COMPILE=$TOOLCHAIN modules || exit 1
 
-nice -n 10 make -j${NR_CPUS} ARCH=arm CROSS_COMPILE=$TOOLCHAIN modules || exit 1
+echo "#################### COMPILAR WIRELESS MODULES ####################"
 
-echo "#################### Update initrd ####################"
+make -C drivers/net/wireless/compat-wireless_R5.SP2.03 KLIB=`pwd` KLIB_BUILD=`pwd` clean -j${NR_CPUS}
 
-if [ -d $INITRAMFS_TMP ]; then
-	rm -rf $INITRAMFS_TMP
-	rm -rf $INITRAMFS_TMPcpio
-	rm -rf $INITRAMFS_TMPcpio.gz
+make -C drivers/net/wireless/compat-wireless_R5.SP2.03 KLIB=`pwd` KLIB_BUILD=`pwd` -j${NR_CPUS}
+
+echo "#################### CORRIGIENDO RAMFS_TMP ####################"
+
+if [ -d $RAMFS_TMP ]; then
+	rm -rf $RAMFS_TMP > /dev/null 2>&1
+	rm -rf $RAMFS_TMPcpio > /dev/null 2>&1
+	rm -rf $RAMFS_TMPcpio.gz > /dev/null 2>&1
 else
-	mkdir $INITRAMFS_TMP
-	chown root:root $INITRAMFS_TMP
-	chmod 777 $INITRAMFS_TMP
+	mkdir $RAMFS_TMP
+	chown root:root $RAMFS_TMP
+	chmod 777 $RAMFS_TMP
 fi;
 
-rm -rf $KERNELDIR/*.cpio
-rm -rf $KERNELDIR/*.cpio.gz
-cp -ax $RAMFS_SOURCE $INITRAMFS_TMP
-mkdir -p $INITRAMFS_TMP/lib/modules
+rm -rf $KERNELDIR/*.cpio > /dev/null 2>&1
+rm -rf $KERNELDIR/*.cpio.gz > /dev/null 2>&1
 
-find $INITRAMFS_TMP -name .git -exec rm -rf {} \;
+echo "#################### COPIANDO RAMFS_SOURCE A RAMFS_TMP ####################"
 
-# remove empty directory placeholders from ramfs_tmp
-find $INITRAMFS_TMP -name EMPTY_DIRECTORY -exec rm -rf {} \;
-find $INITRAMFS_TMP -name .EMPTY_DIRECTORY -exec rm -rf {} \;
-rm -rf $INITRAMFS_TMP/tmp/*
-rm -rf $INITRAMFS_TMP/.hg
+cp -ax $RAMFS_SOURCE $RAMFS_TMP
 
-# copiando mudules personales
-cp $MODULES/* $INITRAMFS_TMP/lib/modules
+echo "##################### BORRANDO EMPY Y ARCHIVOS INNECESARIOS ####################"
 
-# copy modules into tmp-initramfs
-#find . -type f -iname "*.ko" | while read line; do
-#	${TOOLCHAIN}strip --strip-unneeded "$line"
-#	cp "$line" "$INITRAMFS_TMP/lib/modules/;"
-#done
+find $RAMFS_TMP -name EMPTY_DIRECTORY -exec rm -rf {} \;
+find $RAMFS_TMP -name .EMPTY_DIRECTORY -exec rm -rf {} \;
+find $BOOT -name EMPTY_DIRECTORY -exec rm -rf {} \;
+find $BOOT -name .EMPTY_DIRECTORY -exec rm -rf {} \;
+find $RAMFS_TMP -name .git -exec rm -rf {} \;
+rm -rf $RAMFS_TMP/tmp/* > /dev/null 2>&1
+rm -rf $RAMFS_TMP/.hg > /dev/null 2>&1
 
-chmod 755 $INITRAMFS_TMP/lib/modules/*
+echo "##################### CREANDO RUTA PARA MODULES ####################"
 
-# copiando binario busybox completo
-#cp $BUSYBOX/* $INITRAMFS_TMP/sbin
-#chmod 750 $INITRAMFS_TMP/sbin/*
+mkdir -p $BOOT/zip/system/lib/modules
 
-echo "#################### Build initrd ####################"
+echo "###################### COPIANDO MODULES A RUTA ####################"
 
-cd $INITRAMFS_TMP
-find . | fakeroot cpio -o -H newc > $INITRAMFS_TMP.cpio 2>/dev/null
-ls -lh $INITRAMFS_TMP.cpio
-gzip -9 -f $INITRAMFS_TMP.cpio
+find . -name '*.ko' -exec cp -av {} $BOOT/zip/system/lib/modules/ \;
 
-echo "#################### Generar boot.img ####################"
+find $KERNELDIR/arch -type f -name '*.ko' -exec cp -f {} $BOOT/zip/system/lib/modules \;
+find $KERNELDIR/crypto -type f -name '*.ko' -exec cp -f {} $BOOT/zip/system/lib/modules \;
+find $KERNELDIR/fs -type f -name '*.ko' -exec cp -f {} $BOOT/zip/system/lib/modules \;
+find $KERNELDIR/ipc -type f -name '*.ko' -exec cp -f {} $BOOT/zip/system/lib/modules \; 
+find $KERNELDIR/net -type f -name '*.ko' -exec cp -f {} $BOOT/zip/system/lib/modules \;
+find $KERNELDIR/drivers -type f -name '*.ko' -exec cp -f {} $BOOT/zip/system/lib/modules \;
+find $KERNELDIR/drivers/net/wireless/compat-wireless_R5.SP2.03 -type f -name '*.ko' -exec cp -f {} $BOOT/zip/system/lib/modules \;
+
+echo "###################### DANDO PERMISOS A RUTA DE MODULES ####################"
+
+chmod 755 $BOOT/zip/system/lib
+chmod 755 $BOOT/zip/system/lib/modules
+chmod 644 $BOOT/zip/system/lib/modules/*
+
+echo "####################### CREANDO BUSYBOX EN RAMFS_TMP  ########################"
+
+./busy.sh > /dev/null 2>&1
+
+echo "#################### COMPRIMIENDO RAMFS_TMP A .CPIO ####################"
+
+cd $RAMFS_TMP
+find . | fakeroot cpio -o -H newc > $RAMFS_TMP.cpio 2>/dev/null
+ls -lh $RAMFS_TMP.cpio
+gzip -9 -f $RAMFS_TMP.cpio
+
+echo "#################### CREANDO BOOT.IMG ####################"
 
 cd $KERNELDIR
-./mkbootimg --kernel $KERNELDIR/arch/arm/boot/zImage --ramdisk $INITRAMFS_TMP.cpio.gz --board smdk4x12 --base 0x10000000 --pagesize 2048 --ramdiskaddr 0x11000000 -o $KERNELDIR/boot.img
+./mkbootimg --kernel $KERNELDIR/arch/arm/boot/zImage --ramdisk $RAMFS_TMP.cpio.gz --pagesize 2048 --ramdiskaddr 0x0049C4F0 -o $KERNELDIR/boot.img
 
-echo "#################### Preparando flasheables ####################"
+echo "#################### PREPARANDO EL FLASHEABLE ####################"
 
-# eliminando flasheables antiguos
-rm -f $XTREME/tar/*.tar
-rm -f $XTREME/md5/*.md5
-rm -f $XTREME/zip/*.zip
+# ELIMINANDO FLASHEABLE ANTIGUO
+rm -f $BOOT/zip/*.zip > /dev/null 2>&1
 
-# copiando boot.img a ruta de flasheables
-cp boot.img $XTREME/zip
-cp boot.img $XTREME/tar
-cp boot.img $XTREME/md5
+# COPIANDO BOOT.IMG
+cp boot.img $BOOT/zip
+cp boot.img $BOOT
 
-# comprimiendo en formato zip
-cd $XTREME/zip
+# COMPRIMIENDO
+cd $BOOT/zip
 zip -ry -9 "$KERNEL_VERSION-$REVISION$KBUILD_BUILD_VERSION.zip" . -x "*.zip"
 
-# comprimiendo en formato tar
-cd ../tar
-tar cf $KERNEL_VERSION-$REVISION$KBUILD_BUILD_VERSION.tar boot.img && ls -lh $KERNEL_VERSION-$REVISION$KBUILD_BUILD_VERSION.tar
-
-# comprimiendo en formato tar.md5
-cd ../md5
-tar -H ustar -c boot.img > $KERNEL_VERSION-$REVISION$KBUILD_BUILD_VERSION.tar
-md5sum -t $KERNEL_VERSION-$REVISION$KBUILD_BUILD_VERSION.tar >> $KERNEL_VERSION-$REVISION$KBUILD_BUILD_VERSION.tar
-mv $KERNEL_VERSION-$REVISION$KBUILD_BUILD_VERSION.tar $KERNEL_VERSION-$REVISION$KBUILD_BUILD_VERSION.tar.md5
 cd ../..
 
-echo "#################### Eliminando restos ####################"
+echo "#################### ELIMINANDO RESTOS ####################"
 
-# remove all old modules before compile
 find "$KERNELDIR" -type f -iname "*.ko" | while read line; do
 	rm -f "$line"
 done
 
-# remover all old compilaciones
-rm -f $XTREME/zip/boot.img
-rm -f $XTREME/tar/boot.img
-rm -f $XTREME/md5/boot.img
-rm -f $KERNELDIR/arch/arm/boot/*.dtb
-rm -f $KERNELDIR/arch/arm/boot/*.cmd
-rm -rf $KERNELDIR/arch/arm/boot/Image
-rm -rf $KERNELDIR/arch/arm/boot/zImage
-rm -f $KERNELDIR/boot.img
-rm -rf $INITRAMFS_TMP/*
-cd $INITRAMFS_TMP
+rm -f $BOOT/zip/boot.img > /dev/null 2>&1
+rm -rf $BOOT/zip/system > /dev/null 2>&1
+rm -f $KERNELDIR/arch/arm/boot/*.dtb > /dev/null 2>&1
+rm -f $KERNELDIR/arch/arm/boot/*.cmd > /dev/null 2>&1
+rm -rf $KERNELDIR/arch/arm/boot/Image > /dev/null 2>&1
+rm -rf $KERNELDIR/arch/arm/boot/zImage > /dev/null 2>&1
+rm -f $KERNELDIR/boot.img > /dev/null 2>&1
+rm -rf $RAMFS_TMP/* > /dev/null 2>&1
+cd $RAMFS_TMP > /dev/null 2>&1
 cd ..
-rm ramfs-source-sgs3.cpio.gz
-rm /home/rogod/Kernel/tmp/ramfs-source-sgs3.cpio.gz
+rm ramfs-source-htc.cpio.gz > /dev/null 2>&1
+rm /home/rogod/Kernel/tmp/ramfs-source-htc.cpio.gz > /dev/null 2>&1
 
-echo "#################### Terminado ####################"
+echo "#################### TERMINADO ####################"
